@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 C2S Setup Tool — a two-stage installer for configuring RHEL 8 workstations in the SRM IST Trichy VLSI Lab with EDA tools (Xilinx Vivado/Vitis, Cadence, Silvaco TCAD, CADRE VisualTCAD; Synopsys planned).
 
-- `setup.sh` — a bash bootstrapper. Validates the `CADENCE/ SILVACO/ XILINX/ SYNOPSYS/ CADRE/` directory layout next to it, prompts for site config (lab name, hostname format, machine count) on first run, downloads the matching `c2s-setup-linux-amd64` release from GitHub with SHA256 verification (falls back to a cached local binary when offline), then `exec`s it.
-- The Rust binary (`src/`) — a Ratatui TUI that does the actual work: installing tool binaries, generating shell environments, provisioning lab users, and running diagnostics. This is almost always what you're editing.
+- `setup.sh` — a bash bootstrapper. Validates the `CADENCE/ SILVACO/ XILINX/ SYNOPSYS/ CADRE/` directory layout next to it, prompts for site config (lab name, hostname format, machine count) on first run, downloads the matching `c2s-setup-linux-amd64` release from GitHub with SHA256 verification (falls back to a cached local binary when offline), then `exec`s it with any arguments forwarded.
+- The Rust binary (`src/`) — a Ratatui TUI that does the actual work: installing tool binaries, generating shell environments, provisioning lab users, and running diagnostics. This is almost always what you're editing. With no arguments it's the interactive TUI; with any flag (`--preinstall`, `--install cadence`, `--status`, ...) it runs headlessly instead — see "CLI mode" below.
 
 ## Commands
 
@@ -37,6 +37,12 @@ Three-pane layout: Main Menu → Actions (sub-menu) → Details, plus a full-scr
 Progress and errors from spawned tasks reach the UI only through `log_tx: mpsc::UnboundedSender<String>` — there's no other channel back to `App` from a background task. `App::poll_logs()` drains it every frame.
 
 `sys_validation.rs` and `network.rs` each run their own independent background scan (`spawn_system_validation` / `spawn_network_checks`) into an `Arc<Mutex<...>>` state the Dashboard/Network panes read directly; they're not gated by the `busy` flag since they're passive checks, not mutating actions.
+
+### CLI mode (`src/cli.rs`)
+
+`Cli::parse()` (clap derive) runs first in `main()`, before the terminal is ever touched. `Cli::wants_cli_mode()` is true if *any* flag was passed — that's the entire branch condition: no flags → TUI (raw mode, alternate screen, the usual `run_app` loop); any flag → `cli::run()` and exit, raw mode and the alternate screen never entered at all. This is what makes it safe to script over SSH — no TTY assumptions, no leftover terminal state to restore.
+
+`cli::run()` calls the exact same `installer::tools::install_*` / `installer::launcher::recreate_env` / `installer::preinstall::run_preinstall` / `installer::dependency::resolve_and_install_dependency` / `user_mgr::create_or_configure_student_user` functions the TUI's `App::handle_sub_menu_execute()` calls — there's no separate CLI-only implementation of any install step, just a different caller wiring the same `log_tx` channel to `println!` instead of the log pane. `--install`/`--recreate-env` accept multiple tool names (repeated flag or comma-separated) and are validated against a fixed tool list *before* anything runs (`resolve_tool_names`), so a typo'd tool name three tools into a scripted run fails immediately instead of partway through. `setup.sh` forwards `"$@"` to the binary unconditionally, so `curl ... | sudo bash -s -- --preinstall --install cadence` works the same as running the binary directly.
 
 ### EDA environment generation (`src/installer/launcher.rs`, `src/installer/tools.rs`)
 

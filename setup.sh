@@ -172,10 +172,16 @@ fi
 chmod +x "${TUI_LOCAL_PATH}"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. TUI INVOCATION
+# 4. TUI / CLI INVOCATION
 # ─────────────────────────────────────────────────────────────────────────────
-echo -e "\n  ${GREEN}Launching C2S Setup TUI...${NC}"
-sleep 1
+# Any argument here is forwarded straight to the binary. With none, it opens
+# the interactive TUI; with flags (--preinstall, --install cadence, --status,
+# ...) it runs headlessly and exits - e.g. `curl -fsSL .../setup.sh | sudo bash
+# -s -- --machine 5 --preinstall --install cadence` to script a machine over SSH.
+if [[ $# -eq 0 ]]; then
+    echo -e "\n  ${GREEN}Launching C2S Setup TUI...${NC}"
+    sleep 1
+fi
 
 export VLSI_SITE_CONFIG="${SITE_CONFIG_DIR}"
-exec "${TUI_LOCAL_PATH}"
+exec "${TUI_LOCAL_PATH}" "$@"

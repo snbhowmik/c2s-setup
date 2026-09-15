@@ -73,6 +73,28 @@ The core of the installation logic has been rewritten in Rust for speed and reli
 
 ---
 
+## CLI / Headless Mode
+
+The same binary also runs non-interactively - no TUI, no terminal UI at all - for scripting an install across the lab's workstations over SSH. Passing **any** flag switches it to this mode; a bare invocation still opens the TUI.
+
+```bash
+c2s-setup-linux-amd64 --status                                    # print phase-completion status and exit
+c2s-setup-linux-amd64 --machine 5 --preinstall --install cadence  # set machine #, run pre-install, install Cadence
+c2s-setup-linux-amd64 --install xilinx,silvaco,cadre              # install multiple tools (or --install all)
+c2s-setup-linux-amd64 --recreate-env cadence                      # regenerate a tool's environment scripts
+c2s-setup-linux-amd64 --add-user srmist30920,Student,RA2111003010001
+c2s-setup-linux-amd64 --dependency libpng12.so.0
+c2s-setup-linux-amd64 --help                                      # full flag reference
+```
+
+`setup.sh` forwards any arguments straight through, so the same flags work through the bootstrapper too - including piped through `curl`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/snbhowmik/c2s-setup/main/setup.sh | sudo bash -s -- --preinstall --install cadence
+```
+
+---
+
 ## License Servers
 
 | Tool | Port | Server |

@@ -1,5 +1,6 @@
 use std::io;
 use std::time::Duration;
+use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -8,6 +9,7 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 mod app;
+mod cli;
 mod installer;
 mod ui;
 mod user_mgr;
@@ -15,6 +17,7 @@ mod network;
 mod sys_validation;
 
 use app::{App, InputMode};
+use cli::Cli;
 use installer::config::LabConfig;
 
 /// A panic anywhere in the TUI (e.g. a poisoned mutex from a background task)
@@ -36,12 +39,25 @@ fn install_panic_hook() {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     install_panic_hook();
 
+    let cli_args = Cli::parse();
+
     // Determine current running user
     let sudo_user = std::env::var("SUDO_USER").unwrap_or_else(|_| "sysadmin".to_string());
 
     // Load config or default to machine #1
     let config = LabConfig::load_from_state(&sudo_user)
         .unwrap_or_else(|| LabConfig::new(1, &sudo_user));
+
+    // Any flag at all runs headlessly and exits - no TUI, no raw mode/alt
+    // screen ever entered. This is what makes the installer scriptable over
+    // SSH across the lab's 20 workstations.
+    if cli_args.wants_cli_mode() {
+        if let Err(e) = cli::run(cli_args, config).await {
+            eprintln!("[ERROR] {}", e);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     // Setup terminal
     enable_raw_mode()?;
