@@ -53,7 +53,7 @@ export CDS_LIC_FILE="${LM_LICENSE_FILE}"
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOL HOMES  — CIC (Custom IC)
 # ─────────────────────────────────────────────────────────────────────────────
-export LIBERATEHOME="/opt/cadence/LIBERATE201"
+export LIBERATEHOME="/opt/cadence/LIBERATE201" #not found
 
 export CDSHOME="/opt/cadence/IC618"
 export ASSURAHOME="/opt/cadence/ASSURA41"
@@ -64,7 +64,7 @@ export MMSIMHOME="/opt/cadence/SPECTRE211"
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOL HOMES  — ASIC
 # ─────────────────────────────────────────────────────────────────────────────
-export IUSHOME="/opt/cadence/INCISIVE152" #not found
+export IUSHOME="/opt/cadence/INCISIVE152"
 export LECHOME="/opt/cadence/CONFRML211"
 export INNOVUSHOME="/opt/cadence/INNOVUS211"
 export GENUSHOME="/opt/cadence/GENUS211"
@@ -80,6 +80,7 @@ export SIGRITYHOME="/opt/cadence/SIGRITY20221"
 export STRATUSHOME="/opt/cadence/STRATUS2202"
 export PEGASUSHOME="/opt/cadence/PEGASUSDFM221"
 export XCELIUMHOME="/opt/cadence/XCELIUM2209"
+export EMXHOME="/opt/cadence/EMX20231"
 export ULTRASIMHOME="/opt/cadence/ULTRASIM181" #not found
 export VMANAGERHOME="/opt/cadence/VMANAGER2209"
 export INTEGRANDHOME="/opt/cadence/INTEGRAND63"
@@ -121,7 +122,7 @@ _cds_add_path \
     "${ASSURAHOME}/tools.lnx86/dfII/bin" "${ASSURAHOME}/share/bin" \
     "${PVSHOME}/bin" "${PVSHOME}/tools/bin" "${PVSHOME}/tools.lnx86/bin" \
     "${PVSHOME}/tools/dfII/bin" "${PVSHOME}/tools/assura/bin" \
-    "${QRC_HOME}/tools/bin" \
+    "${QRC_HOME}/bin" "${QRC_HOME}/tools/bin" "${QRC_HOME}/tools.lnx86/bin" \
     "${LIBERATEHOME}/bin" "${LIBERATEHOME}/tools.lnx86/bin" "${LIBERATEHOME}/tools.lnx86/dfII/bin"
 
 # ASIC tools
@@ -153,6 +154,7 @@ _cds_add_path \
     "${STRATUSHOME}/share/bin" \
     "${PEGASUSHOME}/bin" "${PEGASUSHOME}/tools.lnx86/bin" "${PEGASUSHOME}/tools.lnx86/dfII/bin" \
     "${PEGASUSHOME}/share/bin" \
+    "${EMXHOME}/bin" "${EMXHOME}/tools.lnx86/bin" "${EMXHOME}/share/bin" \
     "${ULTRASIMHOME}/bin" "${ULTRASIMHOME}/tools.lnx86/bin" "${ULTRASIMHOME}/tools.lnx86/dfII/bin" \
     "${ULTRASIMHOME}/share/bin" \
     "${VMANAGERHOME}/bin" "${VMANAGERHOME}/tools.lnx86/bin" "${VMANAGERHOME}/tools.lnx86/dfII/bin" \
@@ -191,8 +193,19 @@ const EDA_LAUNCHER_SCRIPT: &str = r#"#!/bin/bash
 #    vivado        → loads Xilinx env, launches Vivado
 #    vitis         → loads Xilinx env, launches Vitis
 #    virtuoso      → loads Cadence env, launches Virtuoso
-#    spectre       → loads Cadence env, launches Spectre
-#    genus         → loads Cadence env, launches Genus
+#    spectre       → loads Cadence env, launches Spectre (SPICE simulator)
+#    genus         → loads Cadence env, launches Genus (RTL synthesis)
+#    innovus       → loads Cadence env, launches Innovus (place & route)
+#    xrun          → loads Cadence env, launches Xcelium (logic simulation)
+#    irun          → loads Cadence env, launches Incisive (older sim/formal/accel platform)
+#    tempus        → loads Cadence env, launches Tempus (static timing signoff)
+#    voltus        → loads Cadence env, launches Voltus (power integrity)
+#    lec/lec_auto  → loads Cadence env, launches Conformal (equivalence checking)
+#    jg            → loads Cadence env, launches JasperGold (formal verification)
+#    assura        → loads Cadence env, launches Assura (DRC/LVS/extraction)
+#    quantus       → loads Cadence env, launches Quantus (parasitic extraction)
+#    modus         → loads Cadence env, launches Modus (DFT/ATPG)
+#    liberate      → loads Cadence env, launches Liberate (library characterization)
 #    deckbuild     → Silvaco (always available — lightweight)
 #    victory       → Silvaco (always available — lightweight)
 #
@@ -247,20 +260,35 @@ _vlsi_load_cadence() {
     echo "[EDA] Loading Cadence environment..."
     [[ -f "/opt/cadence/cadence-env.sh" ]] && source "/opt/cadence/cadence-env.sh"
     # Remove these wrappers — Cadence binaries are now on PATH directly
-    unset -f virtuoso spectre genus innovus xcelium modus liberate pegasus              source-cadence _vlsi_load_cadence
+    unset -f virtuoso spectre genus innovus modus liberate xrun irun tempus voltus \
+             lec lec_auto jg assura quantus emx pegasus-cpa pegasus-lpa pegasus-cmp pegasus-caa \
+             source-cadence _vlsi_load_cadence
     echo "[EDA] Cadence environment ready."
 }
 # Manual loader alias
 source-cadence() { _vlsi_load_cadence; }
-# Wrapper functions
+# Wrapper functions - names match the real Cadence binaries exactly (verified
+# against the actual /opt/cadence install trees, not the marketing product names)
 virtuoso()  { _vlsi_load_cadence && command virtuoso "$@"; }
 spectre()   { _vlsi_load_cadence && command spectre "$@"; }
 genus()     { _vlsi_load_cadence && command genus "$@"; }
 innovus()   { _vlsi_load_cadence && command innovus "$@"; }
-xcelium()   { _vlsi_load_cadence && command xcelium "$@"; }
 modus()     { _vlsi_load_cadence && command modus "$@"; }
 liberate()  { _vlsi_load_cadence && command liberate "$@"; }
-pegasus()   { _vlsi_load_cadence && command pegasus "$@"; }
+xrun()      { _vlsi_load_cadence && command xrun "$@"; }
+irun()      { _vlsi_load_cadence && command irun "$@"; }
+tempus()    { _vlsi_load_cadence && command tempus "$@"; }
+voltus()    { _vlsi_load_cadence && command voltus "$@"; }
+lec()       { _vlsi_load_cadence && command lec "$@"; }
+lec_auto()  { _vlsi_load_cadence && command lec_auto "$@"; }
+jg()        { _vlsi_load_cadence && command jg "$@"; }
+assura()    { _vlsi_load_cadence && command assura "$@"; }
+quantus()   { _vlsi_load_cadence && command quantus "$@"; }
+emx()       { _vlsi_load_cadence && command emx "$@"; }
+pegasus-cpa() { _vlsi_load_cadence && command pegasus-cpa "$@"; }
+pegasus-lpa() { _vlsi_load_cadence && command pegasus-lpa "$@"; }
+pegasus-cmp() { _vlsi_load_cadence && command pegasus-cmp "$@"; }
+pegasus-caa() { _vlsi_load_cadence && command pegasus-caa "$@"; }
 "#;
 
 pub async fn recreate_env(
