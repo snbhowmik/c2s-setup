@@ -53,7 +53,7 @@ export CDS_LIC_FILE="${LM_LICENSE_FILE}"
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOL HOMES  — CIC (Custom IC)
 # ─────────────────────────────────────────────────────────────────────────────
-export LIBERATEHOME="/opt/cadence/LIBERATE201" #not found
+export LIBERATEHOME="/opt/cadence/LIBERATE217"
 
 export CDSHOME="/opt/cadence/IC618"
 export ASSURAHOME="/opt/cadence/ASSURA41"
