@@ -66,10 +66,21 @@ pub async fn install_cadence(
     }
 
     let mut installed = 0;
+    let mut skipped = 0;
     let mut failed = 0;
     for archive in &archives {
         let file_name = archive.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let name = file_name.strip_suffix(".tar.gz").unwrap_or(&file_name).to_string();
+
+        // Skip tools already extracted so adding one new archive to TOOLS/
+        // (e.g. a newly licensed tool) doesn't re-extract everything else
+        // already installed - some of these are 10s of GB. Remove the
+        // destination folder first to force a clean re-extract of one tool.
+        if dest_root.join(&name).exists() {
+            send_log(&tx, &format!("[INFO] {} already installed at {}/{} - skipping.", name, dest_root.display(), name));
+            skipped += 1;
+            continue;
+        }
 
         send_log(&tx, &format!("[INFO] Extracting {} -> {}/{}...", file_name, dest_root.display(), name));
         match extract_archive(archive, dest_root).await {
@@ -83,7 +94,7 @@ pub async fn install_cadence(
             }
         }
     }
-    send_log(&tx, &format!("[INFO] Cadence extraction pass complete: {} installed, {} failed.", installed, failed));
+    send_log(&tx, &format!("[INFO] Cadence extraction pass complete: {} installed, {} already present, {} failed.", installed, skipped, failed));
 
     config.mark_phase_done("CADENCE").map_err(|e| e.to_string())?;
     let _ = recreate_env("cadence", tx.clone()).await;
