@@ -23,7 +23,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .style(Style::default().fg(Color::Cyan));
         
     let title = Paragraph::new(Span::styled(
-        " 🚀 C2S CHIPIN EDA Installer (v1.12.6) ",
+        " 🚀 C2S CHIPIN EDA Installer (v1.12.7) ",
         Style::default().add_modifier(Modifier::BOLD),
     ))
     .block(title_block)
