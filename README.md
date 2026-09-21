@@ -20,13 +20,16 @@ A unified interactive setup tool for configuring RHEL 8 workstations in C2S envi
 
 ## Folder Layout
 
-The script enforces a strict directory structure. Place your installer files alongside `setup.sh` before running it:
+Place your installer files alongside `setup.sh` when you have them. None of these folders are required just to run the installer — a missing one only means *that tool's* install action isn't available yet; everything else (pre-install, dependency resolution, user management, network diagnostics, env regeneration, and installing whichever tools you *do* have) still works normally. `setup.sh` prints a warning listing anything missing, not an error.
 
 ```
 ├── setup.sh
 ├── CADENCE/
-│   ├── Digital_RHEL_8.tar.gz
-│   └── Analog_RHEL_8.tar.gz
+│   └── TOOLS/
+│       ├── ASSURA41.tar.gz
+│       ├── GENUS211.tar.gz
+│       ├── IC618.tar.gz
+│       └── ... one .tar.gz per Cadence sub-tool
 ├── SILVACO/
 │   ├── 243423-tcadlegacyandinterco-2024-00-rh64.bin
 │   ├── 255020-victorytcad-2025-01-rh64.bin

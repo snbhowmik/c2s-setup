@@ -19,31 +19,26 @@ REPO_NAME="c2s-setup"
 TUI_BIN_NAME="c2s-setup-linux-amd64"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. DIRECTORY STRUCTURE VALIDATION
+# 1. DIRECTORY STRUCTURE CHECK (informational only)
 # ─────────────────────────────────────────────────────────────────────────────
 # Since this can be run via curl | bash, $0 might be "bash".
-# We require the user to be in the correct directory.
+# A missing tool folder only blocks *installing that tool* - the TUI/CLI still
+# launch fine for everything else (pre-install, dependency resolution, user
+# management, network diagnostics, env regeneration). Each tool's own install
+# step already reports a clear per-tool error if its source folder is missing,
+# so this is a heads-up, not a gate.
 SCRIPT_DIR="$(pwd)"
 
-MISSING=0
+MISSING_DIRS=()
 for DIR in "CADENCE" "SILVACO" "XILINX" "SYNOPSYS" "CADRE"; do
     if [[ ! -d "${SCRIPT_DIR}/${DIR}" ]]; then
-        MISSING=1
+        MISSING_DIRS+=("$DIR")
     fi
 done
 
-if [[ $MISSING -eq 1 ]]; then
-    echo -e "${RED}[ERROR] Invalid directory structure!${NC}"
-    echo -e "You must run this script from the root of the installer repository."
-    echo -e "\nExpected Directory Tree:"
-    echo -e "  ."
-    echo -e "  ├── CADENCE/"
-    echo -e "  ├── CADRE/"
-    echo -e "  ├── SILVACO/"
-    echo -e "  ├── SYNOPSYS/"
-    echo -e "  └── XILINX/"
-    echo -e "\nPlease organize the installers and try again."
-    exit 1
+if [[ ${#MISSING_DIRS[@]} -gt 0 ]]; then
+    echo -e "${YELLOW}[WARN] Missing tool folder(s) next to setup.sh: ${MISSING_DIRS[*]}${NC}"
+    echo -e "${YELLOW}[WARN] Installing those tools won't be available until their folder is added here, but everything else will work.${NC}"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

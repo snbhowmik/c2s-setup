@@ -241,8 +241,12 @@ pub async fn install_silvaco(
 ) -> Result<(), String> {
     let phase_key = format!("SILVACO_{}", part);
     let silvaco_dir = config.get_tool_dir("SILVACO");
+    if !silvaco_dir.exists() {
+        send_log(&tx, &format!("[WARN] SILVACO directory not found at {}. Please place installers under ROOT/SILVACO/", silvaco_dir.display()));
+        return Err("SILVACO directory missing".to_string());
+    }
     send_log(&tx, &format!("[INFO] Installing Silvaco Part {} from {}...", part, silvaco_dir.display()));
-    
+
     config.mark_phase_done(&phase_key).map_err(|e| e.to_string())?;
     let _ = recreate_env("silvaco", tx.clone()).await;
     send_log(&tx, &format!("[SUCCESS] Silvaco Part {} complete.", part));
@@ -254,8 +258,12 @@ pub async fn install_cadre(
     tx: mpsc::UnboundedSender<String>,
 ) -> Result<(), String> {
     let cadre_dir = config.get_tool_dir("CADRE");
+    if !cadre_dir.exists() {
+        send_log(&tx, &format!("[WARN] CADRE directory not found at {}. Please place the installer under ROOT/CADRE/", cadre_dir.display()));
+        return Err("CADRE directory missing".to_string());
+    }
     send_log(&tx, &format!("[INFO] Installing CADRE VisualTCAD from {}...", cadre_dir.display()));
-    
+
     config.mark_phase_done("CADRE").map_err(|e| e.to_string())?;
     let _ = recreate_env("cadre", tx.clone()).await;
     send_log(&tx, "[SUCCESS] CADRE VisualTCAD installation complete.");
