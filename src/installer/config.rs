@@ -33,10 +33,6 @@ impl LabConfig {
             state: HashMap::new(),
         };
         config.load_state();
-
-        if let Ok(cur_dir) = std::env::current_dir() {
-            let _ = config.save_state_key("SCRIPT_DIR", &cur_dir.to_string_lossy());
-        }
         config
     }
 
@@ -72,14 +68,15 @@ impl LabConfig {
         })
     }
 
+    /// Always the *current* process working directory - never persisted or
+    /// cached. This used to be read from install.state once written by an
+    /// earlier run, which meant it silently kept pointing at wherever the
+    /// installer happened to be the very first time it ran (e.g. a USB drive
+    /// mount path) forever after, even once the tool folders had moved
+    /// somewhere else entirely. "Where am I running from right now" is not a
+    /// durable setting like the machine number - it must be re-read every time.
     pub fn get_script_dir(&self) -> PathBuf {
-        if let Some(dir) = self.state.get("SCRIPT_DIR") {
-            PathBuf::from(dir)
-        } else if let Ok(dir) = std::env::current_dir() {
-            dir
-        } else {
-            PathBuf::from(".")
-        }
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
     }
 
     /// Resolves the ROOT directory containing the tool folders (CADENCE, SILVACO,
