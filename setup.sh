@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  C2S Setup Tool - Bootstrapper
-#  Version: 1.12.8
+#  Version: 1.12.9
 #  Author: snbhowmik
 # =============================================================================
 
@@ -60,7 +60,7 @@ fi
 clear
 echo -e "${GREEN}${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║         C2S CHIPIN EDA Installer (v1.12.8)           ║"
+echo "  ║         C2S CHIPIN EDA Installer (v1.12.9)           ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo "  Author: snbhowmik"
 echo "  For more info/feedback visit: https://snbhowmik.dev"
@@ -117,8 +117,8 @@ LATEST_TAG=$(curl --connect-timeout 5 --max-time 10 -sL "$LATEST_RELEASE_URL" | 
 OFFLINE_MODE=0
 if [[ -z "$LATEST_TAG" ]]; then
     echo -e "${YELLOW}[WARN] Failed to fetch latest release info from GitHub (offline, pre-release, or rate-limited).${NC}"
-    echo -e "${YELLOW}[WARN] Falling back to known stable release v1.12.8...${NC}"
-    LATEST_TAG="v1.12.8"
+    echo -e "${YELLOW}[WARN] Falling back to known stable release v1.12.9...${NC}"
+    LATEST_TAG="v1.12.9"
     OFFLINE_MODE=1
 else
     echo -e "  Latest Release: ${BOLD}${LATEST_TAG}${NC}"
