@@ -72,6 +72,7 @@ pub async fn install_cadence(
 
     if !tools_dir.exists() {
         send_log(&tx, &format!("[WARN] {} not found - installed the bulk bundles only.", tools_dir.display()));
+        link_openaccess(dest_root, &tx).await;
         config.mark_phase_done("CADENCE").map_err(|e| e.to_string())?;
         let _ = recreate_env("cadence", tx.clone()).await;
         send_log(&tx, "[SUCCESS] Cadence installation complete.");
@@ -129,6 +130,8 @@ pub async fn install_cadence(
     }
     send_log(&tx, &format!("[INFO] Cadence extraction pass complete: {} installed, {} already present, {} failed.", installed, skipped, failed));
 
+    link_openaccess(dest_root, &tx).await;
+
     config.mark_phase_done("CADENCE").map_err(|e| e.to_string())?;
     let _ = recreate_env("cadence", tx.clone()).await;
     send_log(&tx, "[SUCCESS] Cadence installation complete.");
@@ -141,6 +144,80 @@ pub async fn install_cadence(
 /// bundle's placeholder, overwrite it" apart from "this tool is already
 /// properly installed, leave it alone" across separate runs.
 const BUNDLE_MARKER: &str = ".c2s-from-bundle";
+
+/// Most Cadence tools ship their own bundled, version-tagged OpenAccess
+/// install at their own top level (e.g. `MODUS221/oa_v22.60.065`, `~100+MB`,
+/// fully populated), but expect it linked in at `<tool>/share/oa` - that's
+/// exactly what Cadence's own `share/oaInstallers/oaConfig` script does
+/// (`createSymbolicLink "$OA_HOME" "$SHARE_ROOT/oa"`), a "post-install
+/// configure step" (its own words - see the tool's own missing-OA warning)
+/// that raw tar extraction never runs. Without it: "$OA_HOME is not set and
+/// the Cadence installation does not seem to have a valid default OA
+/// installation" - a warning for some tools, a hard failure for others
+/// (observed: Modus). Runs once after every archive/bundle/gtar pass so it
+/// sees every tool's `oa_v*` directory regardless of which pass produced it.
+///
+/// Only ever replaces an empty `share/oa` placeholder (what the raw tarballs
+/// leave behind) or a symlink already pointing at *some* `oa_v*` (kept
+/// current if the tool was re-extracted at a different OA version) - a real,
+/// populated `share/oa` some future archive might actually ship is left
+/// alone, logged as a warning rather than silently overwritten.
+async fn link_openaccess(dest_root: &Path, tx: &mpsc::UnboundedSender<String>) {
+    let tool_dirs: Vec<PathBuf> = match std::fs::read_dir(dest_root) {
+        Ok(entries) => entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect(),
+        Err(_) => return,
+    };
+
+    for tool_dir in tool_dirs {
+        let oa_source = std::fs::read_dir(&tool_dir).ok().and_then(|entries| {
+            entries.flatten()
+                .map(|e| e.path())
+                .find(|p| p.is_dir() && p.file_name().map(|n| n.to_string_lossy().starts_with("oa_v")).unwrap_or(false))
+        });
+        let Some(oa_source) = oa_source else { continue };
+
+        let share_dir = tool_dir.join("share");
+        if !share_dir.is_dir() {
+            continue; // this tool doesn't use the share/oa convention at all
+        }
+        let oa_link = share_dir.join("oa");
+
+        if let Ok(target) = tokio::fs::read_link(&oa_link).await {
+            if target == oa_source {
+                continue; // already linked correctly
+            }
+        }
+
+        let is_symlink = tokio::fs::symlink_metadata(&oa_link).await.map(|m| m.file_type().is_symlink()).unwrap_or(false);
+        let is_empty_dir = !is_symlink && oa_link.is_dir() && is_dir_empty(&oa_link).await;
+
+        if oa_link.exists() && !is_symlink && !is_empty_dir {
+            send_log(tx, &format!(
+                "[WARN] {} exists and isn't an empty placeholder or a stale link - leaving it, not linking to {}.",
+                oa_link.display(), oa_source.display()
+            ));
+            continue;
+        }
+
+        if is_symlink {
+            let _ = tokio::fs::remove_file(&oa_link).await;
+        } else if is_empty_dir {
+            let _ = tokio::fs::remove_dir(&oa_link).await;
+        }
+
+        match tokio::fs::symlink(&oa_source, &oa_link).await {
+            Ok(()) => send_log(tx, &format!("[SUCCESS] Linked {} -> {} (OpenAccess).", oa_link.display(), oa_source.display())),
+            Err(e) => send_log(tx, &format!("[WARN] Failed to link {} -> {}: {}", oa_link.display(), oa_source.display(), e)),
+        }
+    }
+}
+
+async fn is_dir_empty(path: &Path) -> bool {
+    match tokio::fs::read_dir(path).await {
+        Ok(mut entries) => matches!(entries.next_entry().await, Ok(None)),
+        Err(_) => false,
+    }
+}
 
 /// Non-recursive `<dir>/*<suffix>` glob, sorted for a stable install order.
 fn find_archives(dir: &Path, suffix: &str) -> Vec<PathBuf> {
