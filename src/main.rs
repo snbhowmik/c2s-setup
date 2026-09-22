@@ -1,4 +1,5 @@
 use std::io;
+use std::os::unix::process::CommandExt;
 use std::time::Duration;
 use clap::Parser;
 use crossterm::{
@@ -35,11 +36,33 @@ fn install_panic_hook() {
     }));
 }
 
+/// Every real action this installer takes (dnf, useradd, writing under /opt
+/// or /etc, systemctl) needs root. Rather than failing partway through with a
+/// permission error, re-exec ourselves under `sudo` if we're not already
+/// root, so `./c2s-setup-linux-amd64` run by accident (without `sudo`) just
+/// prompts for the password and carries on instead of needing a manual retry.
+/// `.exec()` replaces this process with `sudo <our-own-path> <our-args>` -
+/// it only returns if that fails to even start; sudo owns the password
+/// prompt on the inherited terminal from there. Left alone for `--help`/
+/// `--version`, which clap has already handled (exiting) before this runs.
+fn ensure_root() {
+    if users::get_effective_uid() == 0 {
+        return;
+    }
+    eprintln!("[INFO] c2s-setup needs root - re-running with sudo...");
+    let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("c2s-setup-linux-amd64"));
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let err = std::process::Command::new("sudo").arg(exe).args(&args).exec();
+    eprintln!("[ERROR] Failed to re-exec with sudo: {}", err);
+    std::process::exit(1);
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     install_panic_hook();
 
     let cli_args = Cli::parse();
+    ensure_root();
 
     // Determine current running user
     let sudo_user = std::env::var("SUDO_USER").unwrap_or_else(|_| "sysadmin".to_string());
