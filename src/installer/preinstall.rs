@@ -25,7 +25,7 @@ pub async fn run_preinstall(
         "libXt-devel", "libXtst-devel", "libXi-devel", "libXft-devel", "libXp", "motif",
         "motif-devel", "ncurses-compat-libs", "xorg-x11-fonts-Type1", "xorg-x11-fonts-75dpi",
         "xorg-x11-fonts-100dpi", "mesa-libGL", "mesa-libGLU", "glu", "compat-openssl10",
-        "redhat-lsb", "libpng12", "glibc.i686", "libX11.i686",
+        "redhat-lsb", "libpng12", "libpng12.i686", "glibc.i686", "libX11.i686",
         // libXss.so.1 - Cadence GUI tools (Virtuoso, etc.) link against the X
         // screen-saver extension; apr-util - pulled in by license/web-service
         // components some Cadence tools ship with; gdb - provides pstack/gstack,

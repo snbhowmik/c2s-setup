@@ -103,6 +103,31 @@ curl -fsSL https://raw.githubusercontent.com/snbhowmik/c2s-setup/main/setup.sh |
 
 ---
 
+## Troubleshooting
+
+### `sss_cache`/`DB version too old` errors during Pre-Install
+
+If Pre-Install's log shows something like this around the `groupadd`/`usermod` steps:
+
+```
+[sss_cache] [sysdb_domain_cache_connect] (0x0010): DB version too old [0.23], expected [0.24] for domain implicit_files!
+Could not open available domains
+```
+
+This is **not** a c2s-setup bug — it's a stale SSSD (System Security Services Daemon) cache database on that specific machine. `groupadd`/`usermod` call out to `sss_cache` to invalidate its cache after modifying `/etc/group`, and that call fails if SSSD's local database is a version older than what's installed. It's non-fatal: the actual group/user change still goes through, and Pre-Install continues and completes normally — the block just looks alarming in the log.
+
+To actually clear it up on that machine:
+
+```bash
+sudo systemctl stop sssd
+sudo rm -rf /var/lib/sss/db/*
+sudo systemctl start sssd
+```
+
+**Only do this if you mean to** — it removes SSSD's cached credentials, which matters if that machine authenticates any accounts against a domain/directory service (LDAP/AD) via SSSD. For a machine using only local Linux accounts (the normal case for these lab workstations), there's nothing cached to lose and this is safe. If you're not sure, leave it — the error is cosmetic either way and doesn't need fixing to keep using the installer.
+
+---
+
 ## License Servers
 
 | Tool | Port | Server |
