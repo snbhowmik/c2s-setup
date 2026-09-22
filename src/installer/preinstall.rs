@@ -14,11 +14,11 @@ pub async fn run_preinstall(
     let hostname_fqdn = config.hostname_fqdn.clone();
 
     // 1. Set Hostname
-    send_log(&tx, &format!("[STEP 1/5] Setting system hostname to {}...", hostname_fqdn));
+    send_log(&tx, &format!("[STEP 1/6] Setting system hostname to {}...", hostname_fqdn));
     run_cmd("hostnamectl", &["set-hostname", &hostname_fqdn], &tx).await?;
 
     // 2. Install EPEL and essential system packages
-    send_log(&tx, "[STEP 2/5] Installing EPEL repository and system build packages...");
+    send_log(&tx, "[STEP 2/6] Installing EPEL repository and system build packages...");
     let dnf_packages = vec![
         "epel-release", "tcsh", "csh", "ksh", "gcc", "gcc-c++", "make", "flex", "bison",
         "patch", "libX11-devel", "libXext-devel", "libXrender-devel", "libXrandr-devel",
@@ -28,8 +28,13 @@ pub async fn run_preinstall(
         "redhat-lsb", "libpng12", "glibc.i686", "libX11.i686",
         // libXss.so.1 - Cadence GUI tools (Virtuoso, etc.) link against the X
         // screen-saver extension; apr-util - pulled in by license/web-service
-        // components some Cadence tools ship with.
-        "libXScrnSaver", "apr-util"
+        // components some Cadence tools ship with; gdb - provides pstack/gstack,
+        // which Virtuoso's PerfDiag looks for on PATH at startup.
+        "libXScrnSaver", "apr-util", "gdb",
+        // tigervnc-server - lets a student start a VNC session on this machine
+        // (vncserver :N) that's reached over an SSH tunnel from another machine,
+        // rather than exposing the VNC port directly.
+        "tigervnc-server"
     ];
 
     let mut dnf_args = vec!["install", "-y"];
@@ -37,7 +42,7 @@ pub async fn run_preinstall(
     let _ = run_cmd("dnf", &dnf_args, &tx).await; // continue even if non-critical package notice occurs
 
     // 3. Create Student User if not existing
-    send_log(&tx, &format!("[STEP 3/5] Setting up student user '{}'...", student_user));
+    send_log(&tx, &format!("[STEP 3/6] Setting up student user '{}'...", student_user));
     let user_check = Command::new("id")
         .arg(&student_user)
         .stdout(Stdio::null())
@@ -55,15 +60,27 @@ pub async fn run_preinstall(
         }
     }
 
-    // 4. Configure GDM X11 (WaylandEnable=false)
-    send_log(&tx, "[STEP 4/5] Ensuring GDM uses X11 for EDA GUI compatibility...");
+    // 4. Create the edausers group and add the student to it. This is
+    // infrastructure only for now - it does NOT grant write access to
+    // /opt/cadence or any other EDA tool tree. Group membership is the
+    // mechanism for granting a lab user a specific permission later (a
+    // scratch/log directory, a device node, etc.) without resorting to
+    // world-writable permissions or sudo - see CLAUDE.md for what's actually
+    // been granted to it so far.
+    send_log(&tx, "[STEP 4/6] Setting up 'edausers' group...");
+    let _ = run_cmd("groupadd", &["-f", "edausers"], &tx).await;
+    run_cmd("usermod", &["-aG", "edausers", &student_user], &tx).await?;
+    send_log(&tx, &format!("[SUCCESS] '{}' is a member of edausers.", student_user));
+
+    // 5. Configure GDM X11 (WaylandEnable=false)
+    send_log(&tx, "[STEP 5/6] Ensuring GDM uses X11 for EDA GUI compatibility...");
     let gdm_conf = "/etc/gdm/custom.conf";
     if std::path::Path::new(gdm_conf).exists() {
         let _ = run_cmd("sed", &["-i", "s/^#WaylandEnable=false/WaylandEnable=false/", gdm_conf], &tx).await;
     }
 
-    // 5. Configure Security Limits for EDA tools
-    send_log(&tx, "[STEP 5/5] Updating /etc/security/limits.conf for EDA tools...");
+    // 6. Configure Security Limits for EDA tools
+    send_log(&tx, "[STEP 6/6] Updating /etc/security/limits.conf for EDA tools...");
     let limits_file = "/etc/security/limits.conf";
     let limits_content = format!(
         "\n# VLSI Lab limits\n{} hard nofile 65536\n{} soft nofile 65536\n{} hard nproc 65536\n{} soft nproc 65536\n",
