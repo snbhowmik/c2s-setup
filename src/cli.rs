@@ -38,6 +38,22 @@ pub struct Cli {
     #[arg(long = "add-user", value_name = "USERNAME[,ROLE,REG_NO]")]
     pub add_user: Vec<String>,
 
+    /// List every real Linux account in the lab-user uid range (1000-59999)
+    /// on this machine, with role guess + env/VNC grant status, and exit.
+    #[arg(long = "list-users")]
+    pub list_users: bool,
+
+    /// Inject EDA launcher sourcing into an existing user's .bashrc. Does not
+    /// create the user. Repeatable or comma-separated.
+    #[arg(long = "grant-env", value_delimiter = ',', value_name = "USERNAME")]
+    pub grant_env: Vec<String>,
+
+    /// Set up a persistent VNC session for an existing user (allocates a
+    /// display, sets a random VNC password printed once here, enables+starts
+    /// vncserver@<display>.service). Repeatable or comma-separated.
+    #[arg(long = "grant-vnc", value_delimiter = ',', value_name = "USERNAME")]
+    pub grant_vnc: Vec<String>,
+
     /// Resolve and install a missing system dependency (package name or .so filename).
     #[arg(long, value_name = "PACKAGE")]
     pub dependency: Option<String>,
@@ -53,6 +69,9 @@ impl Cli {
             || !self.install.is_empty()
             || !self.recreate_env.is_empty()
             || !self.add_user.is_empty()
+            || self.list_users
+            || !self.grant_env.is_empty()
+            || !self.grant_vnc.is_empty()
             || self.dependency.is_some()
     }
 }
@@ -98,6 +117,18 @@ pub async fn run(cli: Cli, mut config: LabConfig) -> Result<(), String> {
 
     for spec in &cli.add_user {
         add_user_from_spec(spec, tx.clone()).await?;
+    }
+
+    if cli.list_users {
+        print_users();
+    }
+
+    for username in &cli.grant_env {
+        user_mgr::grant_env(username, &tx).await?;
+    }
+
+    for username in &cli.grant_vnc {
+        user_mgr::grant_vnc(username, &tx).await?;
     }
 
     if let Some(pkg) = &cli.dependency {
@@ -156,6 +187,20 @@ async fn add_user_from_spec(spec: &str, tx: mpsc::UnboundedSender<String>) -> Re
         _ => return Err(format!("Invalid --add-user format '{}'. Use USERNAME[,ROLE,REGISTER_NO]", spec)),
     };
     user_mgr::create_or_configure_student_user(&username, &role, &identifier, tx).await
+}
+
+fn print_users() {
+    let users = user_mgr::list_lab_users();
+    println!("Lab users on this machine ({}):", users.len());
+    for u in &users {
+        println!(
+            "  {:<16} {:<10} env: {}  vnc: {}",
+            u.username,
+            u.role,
+            if u.bashrc_configured { "yes" } else { "no " },
+            if u.vnc_configured { "yes" } else { "no " },
+        );
+    }
 }
 
 fn print_status(config: &LabConfig) {

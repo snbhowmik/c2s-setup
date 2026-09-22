@@ -88,6 +88,17 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             f.render_widget(Clear, area);
             f.render_widget(p, area);
         },
+        InputMode::GrantAccessPrompt => {
+            let area = centered_rect(64, 30, f.size());
+            let block = create_block(" Grant Env / VNC Access ");
+            let text = format!(
+                "\nGrant to an existing user. Format: USERNAME[,env][,vnc]\nNo flags = grant both. e.g. srmist3091  or  srmist3091,vnc\n\n> {}_",
+                app.input_buffer
+            );
+            let p = Paragraph::new(text).block(block).alignment(Alignment::Center);
+            f.render_widget(Clear, area);
+            f.render_widget(p, area);
+        },
         _ => {}
     }
 }
@@ -165,7 +176,10 @@ fn draw_sub_menu(f: &mut Frame, app: &mut App, area: Rect) {
             items.push(ListItem::new(" Cadre - Recreate Env "));
         },
         4 => items.push(ListItem::new(" [ Refresh Scans ] ")),
-        5 => items.push(ListItem::new(" [ Add New Lab User ] ")),
+        5 => {
+            items.push(ListItem::new(" [ Add New Lab User ] "));
+            items.push(ListItem::new(" [ Grant Env/VNC to User ] "));
+        },
         6 => items.push(ListItem::new(" [ View Logs ] ")),
         _ => {}
     }
@@ -272,10 +286,20 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_widget(p, area);
         },
         5 => {
-            let mut text = vec![Line::from(Span::styled("Current Lab Users:", Style::default().add_modifier(Modifier::BOLD)))];
+            let mut text = vec![Line::from(Span::styled(
+                format!("Lab Users on this machine ({}):", app.users_list.len()),
+                Style::default().add_modifier(Modifier::BOLD),
+            ))];
             for u in &app.users_list {
-                text.push(Line::from(format!(" {} ({}) - .bashrc: {}", u.username, u.role, if u.bashrc_configured { "✔" } else { "✖" })));
+                text.push(Line::from(format!(
+                    " {} ({}) - env: {}  vnc: {}",
+                    u.username, u.role,
+                    if u.bashrc_configured { "✔" } else { "✖" },
+                    if u.vnc_configured { "✔" } else { "✖" },
+                )));
             }
+            text.push(Line::from(""));
+            text.push(Line::from("Grant Env/VNC to User: USERNAME[,env][,vnc] (no flags = both)"));
             let p = Paragraph::new(text).block(block);
             f.render_widget(p, area);
         },

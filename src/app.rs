@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use ratatui::widgets::ListState;
 use crate::installer::config::LabConfig;
-use crate::user_mgr::{check_user_exists, is_bashrc_configured, create_or_configure_student_user, LabUser};
+use crate::user_mgr::{create_or_configure_student_user, grant_env, grant_vnc, list_lab_users, LabUser};
 use crate::network::{NetworkState, spawn_network_checks};
 use crate::sys_validation::{ValidationState, spawn_system_validation};
 
@@ -40,6 +40,7 @@ pub enum InputMode {
     MachineConfigPrompt,
     AddUserPrompt,
     DependencyPrompt,
+    GrantAccessPrompt,
 }
 
 pub struct App {
@@ -97,26 +98,12 @@ impl App {
         app
     }
 
+    /// Every real Linux account in the lab-user uid range, not just the two
+    /// this machine's LabConfig happens to name - this is what lets User
+    /// Management show "here are all N accounts on this machine, pick which
+    /// ones get env/VNC" instead of only ever knowing about one student.
     pub fn refresh_users(&mut self) {
-        let student_user = self.config.student_user.clone();
-        let sysadmin_user = self.config.sysadmin_user.clone();
-
-        self.users_list = vec![
-            LabUser {
-                username: sysadmin_user.clone(),
-                role: "Sysadmin".to_string(),
-                identifier: "SYSADMIN".to_string(),
-                exists: check_user_exists(&sysadmin_user),
-                bashrc_configured: is_bashrc_configured(&sysadmin_user),
-            },
-            LabUser {
-                username: student_user.clone(),
-                role: "Student".to_string(),
-                identifier: format!("STUDENT-{}", self.config.machine_number),
-                exists: check_user_exists(&student_user),
-                bashrc_configured: is_bashrc_configured(&student_user),
-            },
-        ];
+        self.users_list = list_lab_users();
     }
 
     pub fn add_log(&mut self, msg: String) {
@@ -167,7 +154,7 @@ impl App {
                 2 => 0, // Apps -> Empty
                 3 => 7, // EDA Tools -> 4 tools * 2 actions = 8 items (max idx 7)
                 4 => 0, // Network -> Refresh
-                5 => 0, // Users -> Add User
+                5 => 1, // Users -> Add User, Grant Access
                 6 => 0, // Logs -> View
                 _ => 0,
             }
@@ -201,6 +188,56 @@ impl App {
         tokio::spawn(async move {
             if let Err(e) = create_or_configure_student_user(&username, &role, &identifier, tx.clone()).await {
                 tx.send(format!("[ERROR] Failed to add user {}: {}", username, e)).ok();
+            }
+            busy.store(false, Ordering::SeqCst);
+        });
+    }
+
+    /// Parses `USERNAME[,env][,vnc]` from the prompt. Neither flag given
+    /// grants both (the common case - a student who needs the lab at all
+    /// almost always wants both), but either can be given alone so the
+    /// sysadmin can grant just one at a time.
+    pub fn handle_grant_access_submit(&mut self) {
+        let input = self.input_buffer.trim().to_string();
+        self.input_buffer.clear();
+        self.input_mode = InputMode::Normal;
+
+        if input.is_empty() { return; }
+
+        let parts: Vec<String> = input.split(',').map(|s| s.trim().to_lowercase()).collect();
+        let username = match parts.first() {
+            Some(u) if !u.is_empty() => u.clone(),
+            _ => {
+                self.add_log("[ERROR] Invalid format. Use: USERNAME[,env][,vnc]".to_string());
+                return;
+            }
+        };
+        let flags = &parts[1..];
+        let (want_env, want_vnc) = if flags.is_empty() {
+            (true, true)
+        } else {
+            (flags.iter().any(|f| f == "env"), flags.iter().any(|f| f == "vnc"))
+        };
+        if !want_env && !want_vnc {
+            self.add_log(format!("[ERROR] Unrecognized flags in '{}'. Use: USERNAME[,env][,vnc]", input));
+            return;
+        }
+
+        self.focus = Focus::LogStream;
+        let tx = self.log_tx.clone();
+        let busy = self.busy.clone();
+        busy.store(true, Ordering::SeqCst);
+
+        tokio::spawn(async move {
+            if want_env {
+                if let Err(e) = grant_env(&username, &tx).await {
+                    tx.send(format!("[ERROR] Failed to grant env to {}: {}", username, e)).ok();
+                }
+            }
+            if want_vnc {
+                if let Err(e) = grant_vnc(&username, &tx).await {
+                    tx.send(format!("[ERROR] Failed to grant VNC to {}: {}", username, e)).ok();
+                }
             }
             busy.store(false, Ordering::SeqCst);
         });
@@ -288,10 +325,8 @@ impl App {
                 spawn_network_checks(self.network_state.clone());
             },
             5 => {
-                if sub_idx == 0 {
-                    self.input_mode = InputMode::AddUserPrompt;
-                    self.input_buffer.clear();
-                }
+                self.input_mode = if sub_idx == 1 { InputMode::GrantAccessPrompt } else { InputMode::AddUserPrompt };
+                self.input_buffer.clear();
             },
             6 => {
                 // LogStream View

@@ -90,18 +90,12 @@ pub fn spawn_system_validation(state: Arc<Mutex<ValidationState>>) {
             env_status.push((name.to_string(), env_exists));
         }
 
-        // 4. Check Configured Users
-        let mut users_list = Vec::new();
-        if let Ok(out) = Command::new("sh").args(&["-c", "getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $1}'"]).output() {
-            let users_str = String::from_utf8_lossy(&out.stdout);
-            for username in users_str.lines() {
-                let uname = username.trim();
-                if !uname.is_empty() {
-                    let configured = crate::user_mgr::is_bashrc_configured(uname);
-                    users_list.push((uname.to_string(), configured));
-                }
-            }
-        }
+        // 4. Check Configured Users - shared scan with the User Management
+        // screen (user_mgr::list_lab_users) so the two never disagree.
+        let users_list: Vec<(String, bool)> = crate::user_mgr::list_lab_users()
+            .into_iter()
+            .map(|u| (u.username, u.bashrc_configured))
+            .collect();
 
         {
             let mut s = state.lock().unwrap();

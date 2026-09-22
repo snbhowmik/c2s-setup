@@ -223,6 +223,22 @@ async fn run_app<B: ratatui::backend::Backend>(
                         }
                         _ => {}
                     },
+                    InputMode::GrantAccessPrompt => match key.code {
+                        KeyCode::Enter => {
+                            app.handle_grant_access_submit();
+                        }
+                        KeyCode::Esc => {
+                            app.input_buffer.clear();
+                            app.input_mode = InputMode::Normal;
+                        }
+                        KeyCode::Char(c) => {
+                            app.input_buffer.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            app.input_buffer.pop();
+                        }
+                        _ => {}
+                    },
                 }
             }
         }

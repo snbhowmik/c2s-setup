@@ -86,9 +86,14 @@ c2s-setup-linux-amd64 --machine 5 --preinstall --install cadence  # set machine 
 c2s-setup-linux-amd64 --install xilinx,silvaco,cadre              # install multiple tools (or --install all)
 c2s-setup-linux-amd64 --recreate-env cadence                      # regenerate a tool's environment scripts
 c2s-setup-linux-amd64 --add-user srmist30920,Student,RA2111003010001
+c2s-setup-linux-amd64 --list-users                                 # list every real account on this machine + env/VNC status
+c2s-setup-linux-amd64 --grant-env srmist3091,srmist3092             # source the EDA launcher into existing users' .bashrc
+c2s-setup-linux-amd64 --grant-vnc srmist3091                        # set up a persistent VNC session (password printed once)
 c2s-setup-linux-amd64 --dependency libpng12.so.0
 c2s-setup-linux-amd64 --help                                      # full flag reference
 ```
+
+Env and VNC are opt-in per user, not automatic — pre-install only provisions the one student account a machine's config names; deciding who else gets the EDA environment or a VNC session (a sysadmin's own login, a second student, a guest) is a separate, explicit choice via the above or the TUI's User Management screen.
 
 `setup.sh` forwards any arguments straight through, so the same flags work through the bootstrapper too - including piped through `curl`:
 
