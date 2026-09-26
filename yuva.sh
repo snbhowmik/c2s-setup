@@ -6,26 +6,29 @@ USERS=("yuvatsrm1" "yuvatsrm2")
 PASSWORD="srmist"
 REFERENCE_USER="srmist309x"
 
-MAX_RETRIES=3
-
-log() { echo -e "\e[32m[+]\e[0m $1"; }
-warn() { echo -e "\e[33m[!]\e[0m $1"; }
-err() { echo -e "\e[31m[✗]\e[0m $1"; }
+log(){ echo -e "\e[32m[+]\e[0m $1"; }
+warn(){ echo -e "\e[33m[!]\e[0m $1"; }
+err(){ echo -e "\e[31m[✗]\e[0m $1"; }
 
 # --------------------------------------------------
-# 1. Install dependencies
+# 1. INSTALL EVERYTHING REQUIRED
 # --------------------------------------------------
-log "Checking dependencies..."
+log "Installing dependencies..."
 
-sudo dnf install -y tigervnc-server dbus-x11 xorg-x11-xauth >/dev/null
-
-if ! rpm -q gnome-session &>/dev/null; then
-    log "Installing GNOME..."
-    sudo dnf groupinstall -y "Server with GUI"
-fi
+sudo dnf install -y tigervnc-server \
+gnome-session gnome-session-xsession \
+xorg-x11-server-Xorg xorg-x11-xauth \
+dbus-x11 gnome-terminal nautilus >/dev/null
 
 # --------------------------------------------------
-# 2. Config files
+# 2. FORCE XORG (disable Wayland)
+# --------------------------------------------------
+log "Disabling Wayland..."
+
+sudo sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm/custom.conf || true
+
+# --------------------------------------------------
+# 3. TIGERVNC CONFIG (vncsession mode)
 # --------------------------------------------------
 log "Configuring TigerVNC..."
 
@@ -36,154 +39,117 @@ session=gnome
 geometry=1920x1080
 localhost
 alwaysshared
+securitytypes=vncauth,tlsvnc
 EOF
 
-# Detect bashrc source
-if id "$REFERENCE_USER" &>/dev/null; then
-    SRC_BASHRC="/home/$REFERENCE_USER/.bashrc"
-elif id "srmist309xx" &>/dev/null; then
-    SRC_BASHRC="/home/srmist309xx/.bashrc"
-else
-    SRC_BASHRC=""
-fi
+# --------------------------------------------------
+# 4. CREATE USERS + PASSWORD
+# --------------------------------------------------
+log "Creating users..."
 
-# --------------------------------------------------
-# 3. Generate password file
-# --------------------------------------------------
 TMP_PASSWD="/tmp/vnc_passwd"
 printf "$PASSWORD\n$PASSWORD\n\n" | vncpasswd > "$TMP_PASSWD"
 chmod 600 "$TMP_PASSWD"
 
-# --------------------------------------------------
-# 4. Create users + setup
-# --------------------------------------------------
-DISPLAY_NUM=1
-VNC_USERS_FILE=""
+DISPLAY=1
+VNC_USERS=""
 
 for user in "${USERS[@]}"; do
 
     if ! id "$user" &>/dev/null; then
-        log "Creating user $user"
         sudo useradd -m -G wheel "$user"
         echo "$user:$PASSWORD" | sudo chpasswd
     fi
 
-    HOME_DIR=$(eval echo "~$user")
+    HOME=$(eval echo "~$user")
 
-    # bashrc copy
-    if [ -n "$SRC_BASHRC" ] && [ -f "$SRC_BASHRC" ]; then
-        sudo cp "$SRC_BASHRC" "$HOME_DIR/.bashrc"
-        sudo chown $user:$user "$HOME_DIR/.bashrc"
+    # Copy bashrc if exists
+    if id "$REFERENCE_USER" &>/dev/null; then
+        sudo cp /home/$REFERENCE_USER/.bashrc $HOME/.bashrc
+    elif id "srmist309xx" &>/dev/null; then
+        sudo cp /home/srmist309xx/.bashrc $HOME/.bashrc
     fi
 
-    # VNC setup
-    sudo mkdir -p "$HOME_DIR/.vnc"
-    sudo cp "$TMP_PASSWD" "$HOME_DIR/.vnc/passwd"
+    # Setup VNC passwd
+    sudo mkdir -p $HOME/.vnc
+    sudo cp $TMP_PASSWD $HOME/.vnc/passwd
 
-    # GNOME FIXED xstartup
-    sudo tee "$HOME_DIR/.vnc/xstartup" >/dev/null <<'EOF'
-#!/bin/bash
-unset SESSION_MANAGER
-unset DBUS_SESSION_BUS_ADDRESS
-
-export XDG_RUNTIME_DIR=/run/user/$(id -u)
-export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
-
-exec dbus-launch --exit-with-session gnome-session
-EOF
-
-    sudo chmod +x "$HOME_DIR/.vnc/xstartup"
-    sudo chown -R $user:$user "$HOME_DIR/.vnc"
-    sudo chmod 600 "$HOME_DIR/.vnc/passwd"
+    sudo chown -R $user:$user $HOME/.vnc $HOME/.bashrc 2>/dev/null || true
+    sudo chmod 600 $HOME/.vnc/passwd
 
     # Ensure Xauthority exists
-    sudo -u $user touch "$HOME_DIR/.Xauthority"
-    sudo chown $user:$user "$HOME_DIR/.Xauthority"
+    sudo -u $user touch $HOME/.Xauthority
 
-    VNC_USERS_FILE+=":${DISPLAY_NUM}=${user}"$'\n'
-    ((DISPLAY_NUM++))
+    VNC_USERS+=":${DISPLAY}=${user}"$'\n'
+    ((DISPLAY++))
 done
 
-echo "$VNC_USERS_FILE" | sudo tee /etc/tigervnc/vncserver.users >/dev/null
+echo "$VNC_USERS" | sudo tee /etc/tigervnc/vncserver.users >/dev/null
 
 # --------------------------------------------------
-# 5. Self-healing start function
+# 5. HARD CLEAN (CRITICAL)
 # --------------------------------------------------
-fix_and_restart() {
-    local display=$1
-    local user=$2
-    local home=$(eval echo "~$user")
+log "Cleaning old sessions..."
 
-    warn "Healing display :$display for $user"
+sudo systemctl stop vncserver@:1.service vncserver@:2.service 2>/dev/null || true
 
-    # Kill sessions
-    vncserver -kill :$display &>/dev/null || true
+sudo pkill -9 Xvnc 2>/dev/null || true
 
-    # Kill stray processes
-    pkill -u $user Xvnc &>/dev/null || true
+sudo rm -rf /tmp/.X*
+sudo rm -rf /tmp/.X11-unix/*
 
-    # Clean locks
-    sudo rm -rf /tmp/.X${display}-lock
-    sudo rm -rf /tmp/.X11-unix/X${display}
-
-    # Clean user VNC leftovers
-    rm -rf "$home/.vnc/"*.pid "$home/.vnc/"*.log 2>/dev/null || true
-
-    # Restart
-    sudo systemctl restart vncserver@:${display}.service
-}
+for user in "${USERS[@]}"; do
+    rm -rf /home/$user/.vnc/*.log /home/$user/.vnc/*.pid 2>/dev/null || true
+done
 
 # --------------------------------------------------
-# 6. Start + self-heal loop
+# 6. START SERVICES
 # --------------------------------------------------
 log "Starting VNC services..."
 
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 
-DISPLAY_NUM=1
-
+DISPLAY=1
 for user in "${USERS[@]}"; do
-    sudo systemctl enable vncserver@:${DISPLAY_NUM}.service
-    sudo systemctl restart vncserver@:${DISPLAY_NUM}.service
-    ((DISPLAY_NUM++))
+    sudo systemctl enable vncserver@:${DISPLAY}.service
+    sudo systemctl restart vncserver@:${DISPLAY}.service
+    ((DISPLAY++))
 done
 
 # --------------------------------------------------
-# 7. Validation + retry loop
+# 7. VALIDATION (REAL CHECK)
 # --------------------------------------------------
-log "Validating services (self-healing mode)..."
+log "Validating ports..."
 
-DISPLAY_NUM=1
+sleep 5
+
+DISPLAY=1
+FAIL=0
 
 for user in "${USERS[@]}"; do
-    PORT=$((5900 + DISPLAY_NUM))
-    SUCCESS=0
+    PORT=$((5900 + DISPLAY))
 
-    for ((i=1; i<=MAX_RETRIES; i++)); do
-        sleep 2
-
-        if ss -tulnp | grep -q ":$PORT"; then
-            log "$user running on port $PORT"
-            SUCCESS=1
-            break
-        else
-            warn "$user failed (attempt $i), fixing..."
-            fix_and_restart "$DISPLAY_NUM" "$user"
-        fi
-    done
-
-    if [ $SUCCESS -eq 0 ]; then
-        err "$user FAILED after retries"
-        sudo journalctl -xeu vncserver@:${DISPLAY_NUM}.service --no-pager | tail -n 20
+    if ss -tulnp | grep -q ":$PORT"; then
+        log "$user running on port $PORT"
+    else
+        err "$user FAILED on port $PORT"
+        FAIL=1
     fi
 
-    ((DISPLAY_NUM++))
+    ((DISPLAY++))
 done
 
 # --------------------------------------------------
-# Cleanup
+# 8. FINAL STATUS
 # --------------------------------------------------
-rm -f "$TMP_PASSWD"
+if [ $FAIL -eq 0 ]; then
+    log "🔥 SUCCESS — GNOME VNC WORKING"
+else
+    err "❌ STILL FAILING — showing logs"
 
-log "DONE — self-healing VNC setup complete."
+    sudo journalctl -xeu vncserver@:1.service --no-pager | tail -n 20
+    sudo journalctl -xeu vncserver@:2.service --no-pager | tail -n 20
+fi
+
+rm -f $TMP_PASSWD
